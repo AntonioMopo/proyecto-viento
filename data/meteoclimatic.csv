@@ -1,0 +1,20 @@
+spot,fuente,estacion,fecha_hora_utc,viento_medio_kn,direccion,max_dia_kn,estado
+Cullera,meteoclimatic,ESPVA4600000046409A,2026-11-20 18:03,1.6,SSE,20.0,ok
+El Perelló,meteoclimatic,ESPVA4600000046420A,2026-11-20 18:03,5.4,S,21.1,ok
+Sagunto,meteoclimatic,ESPVA4600000046520D,2026-11-20 18:03,1.6,NNW,12.4,ok
+El Puig,meteoclimatic,ESPVA4600000046540A,2026-11-20 18:03,1.1,WNW,13.0,ok
+Pinedo,meteoclimatic,ESPVA4600000046022A,2026-11-20 18:03,2.7,WSW,20.5,ok
+El Saler,meteoclimatic,ESPVA4600000046022A,2026-11-20 18:03,2.7,WSW,20.5,ok
+Cullera,meteoclimatic,ESPVA4600000046409A,2026-11-20 18:18,2.7,S,20.0,ok
+El Perelló,meteoclimatic,ESPVA4600000046420A,2026-11-20 18:18,4.3,S,21.1,ok
+Sagunto,meteoclimatic,ESPVA4600000046520D,2026-11-20 18:18,1.6,NNW,12.4,ok
+El Puig,meteoclimatic,ESPVA4600000046540A,2026-11-20 18:18,1.6,NW,13.0,ok
+Pinedo,meteoclimatic,ESPVA4600000046022A,2026-11-20 18:18,2.2,WSW,20.5,ok
+El Saler,meteoclimatic,ESPVA4600000046022A,2026-11-20 18:18,2.2,WSW,20.5,ok
+Cullera,meteoclimatic,ESPVA4600000046409A,2026-11-20 18:19,2.7,S,20.0,ok
+El Perelló,meteoclimatic,ESPVA4600000046420A,2026-11-20 18:19,4.3,S,21.1,ok
+Sagunto,meteoclimatic,ESPVA4600000046520D,2026-11-20 18:19,1.6,NNW,12.4,ok
+El Puig,meteoclimatic,ESPVA4600000046540A,2026-11-20 18:19,1.6,NW,13.0,ok
+Pinedo,meteoclimatic,ESPVA4600000046022A,2026-11-20 18:19,2.2,WSW,20.5,ok
+El Saler,meteoclimatic,ESPVA4600000046022A,2026-11-20 18:19,2.2,WSW,20.5,ok
+Les Marines,meteoclimatic,ESPVA0300000003700F,2026-11-20 18:19,1.1,S,21.1,ok
