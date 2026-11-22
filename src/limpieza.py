@@ -2,7 +2,9 @@
 # Lee los tres CSV de la captura (Meteoclimatic, olas de Open-Meteo y AEMET)
 # y mis notas de dirección, y genera data/datos_limpios.csv con una fila por
 # spot y hora: viento en el spot, ola prevista, referencia oficial de AEMET,
-# tipo de viento y si es navegable para cada deporte.
+# tipo de viento, la fuerza (base, racha y viento efectivo en nudos) y, para
+# cada deporte, una nota de fuerza, una de dirección y una nota final del
+# 0 al 10 (en vez de decir solo si se puede o no navegar).
 # Uso:  python src/limpieza.py
 
 import csv
@@ -16,9 +18,17 @@ FICH_AEMET = "data/aemet_obs.csv"
 FICH_NOTAS = "data/puntuacion_direcciones.csv"
 FICH_SALIDA = "data/datos_limpios.csv"
 
-# Viento medio mínimo (nudos) para cada deporte (Entrega 2)
+# Viento mínimo (nudos) para cada deporte (Entrega 2)
 UMBRALES = {"wing": 12, "kite": 15, "windsurf": 19}
-NOTA_MINIMA = 5        # una dirección "vale" si mi nota es 5 o más
+
+# Escala de la nota de fuerza alrededor del umbral:
+# 4 kn o más por debajo -> 0, en el umbral -> 5, 6 kn o más por encima -> 10
+MARGEN_ABAJO = 4
+MARGEN_ARRIBA = 6
+
+# Peso de la racha en el viento efectivo: media + 0,5 * (racha - media).
+# Un día de 18 de media con rachas de 25 se navega como uno de 21,5.
+PESO_RACHA = 0.5
 
 # Rosa de 16 rumbos -> grados (Meteoclimatic da la dirección en texto)
 RUMBOS = {"N": 0, "NNE": 22.5, "NE": 45, "ENE": 67.5, "E": 90, "ESE": 112.5,
@@ -29,12 +39,17 @@ RUMBOS = {"N": 0, "NNE": 22.5, "NE": 45, "ENE": 67.5, "E": 90, "ESE": 112.5,
 SECTORES = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 COLUMNAS = ["spot", "fecha_hora_utc",
-            "viento_medio_kn", "max_dia_kn", "direccion_grados", "direccion_sector",
-            "tipo_viento", "estado_estacion",
+            # Fuerza: la base, la racha y el viento efectivo, en nudos
+            "viento_medio_kn", "racha_estimada_kn", "viento_efectivo_kn",
+            "direccion_grados", "direccion_sector", "tipo_viento",
+            # Para cada deporte: nota de fuerza (con el viento efectivo, que
+            # tiene en cuenta base y racha), nota de dirección (mía) y nota final
+            "fuerza_wing", "direccion_wing", "nota_wing",
+            "fuerza_kite", "direccion_kite", "nota_kite",
+            "fuerza_windsurf", "direccion_windsurf", "nota_windsurf",
             "ola_altura_m", "ola_periodo_s", "ola_direccion_grados",
-            "aemet_viento_medio_kn", "aemet_racha_kn", "aemet_direccion_grados",
-            "nota_wing", "nota_kite", "nota_windsurf",
-            "navegable_wing", "navegable_kite", "navegable_windsurf"]
+            "max_dia_kn", "estado_estacion", "factor_racha",
+            "aemet_viento_medio_kn", "aemet_racha_kn", "aemet_direccion_grados"]
 
 
 # ---------- 2. Funciones de ayuda ----------
@@ -87,6 +102,27 @@ def tipo_de_viento(grados):
     if 240 <= grados <= 300:
         return "Poniente"
     return "Otro"
+
+
+def hora_anterior(hora):
+    # "2026-11-22 13:00" -> "2026-11-22 12:00" (AEMET publica con retraso)
+    from datetime import datetime, timedelta
+    h = datetime.strptime(hora, "%Y-%m-%d %H:%M") - timedelta(hours=1)
+    return h.strftime("%Y-%m-%d %H:%M")
+
+
+def nota_fuerza(efectivo, umbral):
+    # 0 si faltan 4 kn o más, 5 justo en el umbral, 10 con 6 kn o más de sobra,
+    # y en línea recta entre medias
+    if efectivo is None:
+        return None
+    if efectivo <= umbral - MARGEN_ABAJO:
+        return 0.0
+    if efectivo <= umbral:
+        return round(5 * (efectivo - (umbral - MARGEN_ABAJO)) / MARGEN_ABAJO, 1)
+    if efectivo >= umbral + MARGEN_ARRIBA:
+        return 10.0
+    return round(5 + 5 * (efectivo - umbral) / MARGEN_ARRIBA, 1)
 
 
 # ---------- 3. Meteoclimatic: una fila por spot y hora ----------
@@ -153,22 +189,45 @@ def unir(viento, olas, aemet, notas):
         fila["ola_periodo_s"] = a_numero(ola.get("ola_periodo_s"))
         fila["ola_direccion_grados"] = a_numero(ola.get("ola_direccion_grados"))
 
-        oficial = aemet.get(clave, {})
+        # AEMET va con retraso: si no hay dato de esta hora, uso el de la anterior
+        oficial = aemet.get(clave) or aemet.get((clave[0], hora_anterior(clave[1])), {})
         fila["aemet_viento_medio_kn"] = a_numero(oficial.get("viento_medio_kn"))
         fila["aemet_racha_kn"] = a_numero(oficial.get("racha_kn"))
         fila["aemet_direccion_grados"] = a_numero(oficial.get("direccion_grados"))
 
+        # Racha en el spot: Meteoclimatic no da racha horaria, así que uso el
+        # "factor de racha" de AEMET (racha / media en su estación) y lo aplico
+        # a la media del spot. Sin AEMET, el viento efectivo es solo la media.
+        media = fila["viento_medio_kn"]
+        factor = None
+        if fila["aemet_viento_medio_kn"] and fila["aemet_racha_kn"]:
+            factor = round(fila["aemet_racha_kn"] / fila["aemet_viento_medio_kn"], 2)
+        fila["factor_racha"] = factor
+        if media is None:
+            fila["racha_estimada_kn"] = None
+            fila["viento_efectivo_kn"] = None
+        elif factor is None:
+            fila["racha_estimada_kn"] = None
+            fila["viento_efectivo_kn"] = media
+        else:
+            racha = round(media * factor, 1)
+            fila["racha_estimada_kn"] = racha
+            fila["viento_efectivo_kn"] = round(media + PESO_RACHA * (racha - media), 1)
+
+        # Para cada deporte: nota de fuerza (con el viento efectivo, que ya
+        # junta la base y la racha), nota de dirección (mis notas) y nota final.
+        # Nota final = fuerza x dirección / 10. Hacen falta las dos: con terral
+        # (dirección 0) la final es 0 aunque sople mucho.
         nota_spot = notas.get((fila["spot"], sector), {})
         for deporte, umbral in UMBRALES.items():
-            nota = nota_spot.get(deporte)
-            fila["nota_" + deporte] = nota
-            # Navegable = hay viento suficiente Y la dirección vale en ese spot.
-            # Si falta algún dato no puedo decidirlo y lo dejo vacío.
-            if fila["viento_medio_kn"] is None or nota is None:
-                fila["navegable_" + deporte] = None
+            fuerza = nota_fuerza(fila["viento_efectivo_kn"], umbral)
+            direccion = nota_spot.get(deporte)
+            fila["fuerza_" + deporte] = fuerza
+            fila["direccion_" + deporte] = direccion
+            if fuerza is None or direccion is None:
+                fila["nota_" + deporte] = None      # falta un dato: no se puede puntuar
             else:
-                fila["navegable_" + deporte] = (fila["viento_medio_kn"] >= umbral
-                                                and nota >= NOTA_MINIMA)
+                fila["nota_" + deporte] = round(fuerza * direccion / 10, 1)
         filas.append(fila)
     return filas
 
@@ -192,5 +251,8 @@ if __name__ == "__main__":
     print("Con ola:", sum(1 for f in filas if f["ola_altura_m"] is not None))
     print("Con referencia de AEMET:", sum(1 for f in filas if f["aemet_viento_medio_kn"] is not None))
     for d in UMBRALES:
-        print("Horas navegables de", d + ":", sum(1 for f in filas if f["navegable_" + d]))
+        notas_d = [f["nota_" + d] for f in filas if f["nota_" + d] is not None]
+        if notas_d:
+            print("Nota máxima de", d + ":", max(notas_d), "| horas con nota >= 5:",
+                  sum(1 for n in notas_d if n >= 5))
     print("Guardado en", FICH_SALIDA)
